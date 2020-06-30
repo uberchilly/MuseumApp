@@ -2,20 +2,24 @@ package com.elfak.museumapp.museum_item_details
 
 import android.content.Context
 import android.content.Intent
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.widget.Toast
+import android.view.View
+import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
 import androidx.viewpager2.widget.ViewPager2
 import com.elfak.museumapp.R
-import com.elfak.museumapp.model.MuseumData
-import com.elfak.museumapp.model.MuseumItem
+import com.elfak.museumapp.model.AsyncTaskState
+import com.elfak.museumapp.model.MuseumModel
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.android.synthetic.main.activity_details.*
-import java.lang.RuntimeException
 
+
+@AndroidEntryPoint
 class DetailsActivity : AppCompatActivity() {
+    private val viewModel: DetailsActivityViewModel by viewModels()
 
     companion object {
-        private const val QR_CODE_CONTENT_KEY = "QR_CODE_CONTENT_KEY"
+        const val QR_CODE_CONTENT_KEY = "QR_CODE_CONTENT_KEY"
 
         fun startActivity(context: Context, qrCodeContent: String) {
             val intent = Intent(context, DetailsActivity::class.java)
@@ -24,61 +28,58 @@ class DetailsActivity : AppCompatActivity() {
         }
     }
 
-    private var museumItemKey: String = ""
-    private var museumItem: MuseumItem? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_details)
 
-        museumItemKey =
-            if (savedInstanceState != null && savedInstanceState.containsKey(QR_CODE_CONTENT_KEY)) {
-                savedInstanceState.getString(QR_CODE_CONTENT_KEY, "")
-            } else if (intent != null && intent.hasExtra(QR_CODE_CONTENT_KEY)) {
-                intent.getStringExtra(QR_CODE_CONTENT_KEY)
-            } else {
-                throw RuntimeException("Invalid data passed")
-            }
+        viewModel.mainDataState.observe(this, { state ->
+            when (state) {
+                is AsyncTaskState.LoadingState -> {
+                    progress.visibility = View.VISIBLE
+                    errorHolder.visibility = View.GONE
+                    mainContent.visibility = View.GONE
+                }
 
-        if (museumItemKey.isNullOrEmpty()) {
-            invalidData()
-            return
-        }
+                is AsyncTaskState.SuccessState<*> -> {
+                    val data = state.data as MuseumModel
+                    progress.visibility = View.GONE
+                    errorHolder.visibility = View.GONE
+                    mainContent.visibility = View.VISIBLE
 
-        museumItem = MuseumData.data[museumItemKey]
-        if (museumItem == null) {
-            invalidData()
-            return
-        }
+                    imagePager.registerOnPageChangeCallback(object :
+                        ViewPager2.OnPageChangeCallback() {
+                        override fun onPageSelected(position: Int) {
+                            super.onPageSelected(position)
 
-        imagePager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                super.onPageSelected(position)
+                            imageIndicator.text =
+                                "${position + 1} / ${data.imageUrl.size}"
+                        }
+                    })
 
-                imageIndicator.text = "${position + 1} / ${museumItem?.images?.size ?: 0}"
+                    displayData(data)
+                }
+
+                is AsyncTaskState.ErrorState -> {
+                    errorHolder.visibility = View.VISIBLE
+                    errorText.text = state.error.localizedMessage
+
+                    progress.visibility = View.GONE
+                    mainContent.visibility = View.GONE
+                }
             }
         })
 
-        displayData()
-    }
-
-    private fun displayData() {
-        museumItem?.let {
-            imageIndicator.text = "${1} / ${it.images.size}"
-            titleText.text = it.title
-            descriptionText.text = it.description
-            imagePager.adapter = MuseumItemImagesAdapter(it.images)
+        errorHolder.setOnClickListener {
+            viewModel.onErrorRetryClicked()
         }
+
+        viewModel.onCreate()
     }
 
-
-    private fun invalidData() {
-        Toast.makeText(this, "Invalid data", Toast.LENGTH_SHORT).show()
-        finish()
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        outState.putString(QR_CODE_CONTENT_KEY, museumItemKey)
+    private fun displayData(data: MuseumModel) {
+        imageIndicator.text = "${1} / ${data.imageUrl.size}"
+        titleText.text = " ${data.artistName} ${data.itemName}"
+        descriptionText.text = data.description
+        imagePager.adapter = MuseumItemImagesAdapter(data.imageUrl)
     }
 }
