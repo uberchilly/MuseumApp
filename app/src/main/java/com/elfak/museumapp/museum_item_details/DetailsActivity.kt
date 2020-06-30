@@ -16,6 +16,16 @@ import kotlinx.android.synthetic.main.activity_details.*
 
 @AndroidEntryPoint
 class DetailsActivity : AppCompatActivity() {
+    private var data: MuseumModel? = null
+    private val onPageChangeCallback: ViewPager2.OnPageChangeCallback = object :
+        ViewPager2.OnPageChangeCallback() {
+        override fun onPageSelected(position: Int) {
+            super.onPageSelected(position)
+
+            imageIndicator.text =
+                "${position + 1} / ${data?.imageUrl?.size}"
+        }
+    }
     private val viewModel: DetailsActivityViewModel by viewModels()
 
     companion object {
@@ -31,6 +41,7 @@ class DetailsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_details)
+        imagePager.registerOnPageChangeCallback(onPageChangeCallback)
 
         viewModel.mainDataState.observe(this, { state ->
             when (state) {
@@ -41,22 +52,12 @@ class DetailsActivity : AppCompatActivity() {
                 }
 
                 is AsyncTaskState.SuccessState<*> -> {
-                    val data = state.data as MuseumModel
+                    data = state.data as MuseumModel
                     progress.visibility = View.GONE
                     errorHolder.visibility = View.GONE
                     mainContent.visibility = View.VISIBLE
 
-                    imagePager.registerOnPageChangeCallback(object :
-                        ViewPager2.OnPageChangeCallback() {
-                        override fun onPageSelected(position: Int) {
-                            super.onPageSelected(position)
-
-                            imageIndicator.text =
-                                "${position + 1} / ${data.imageUrl.size}"
-                        }
-                    })
-
-                    displayData(data)
+                    displayData(data!!)
                 }
 
                 is AsyncTaskState.ErrorState -> {
